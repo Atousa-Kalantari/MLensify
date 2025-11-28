@@ -3,7 +3,7 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "MLensify"
+name = "Microlensify"
 version = "1.0.0"
 description = "Microlensing Single Lens Classification – Atousa Kalantari & Somayeh Khakpash"
 authors = [{ name = "Atousa Kalantari", email = "atousakalantari99@gmail.com" }]
@@ -15,23 +15,23 @@ dependencies = []
 [project.optional-dependencies]
 core = ["numpy>=1.21", "pandas", "astropy", "joblib", "tqdm"]
 ml = ["tensorflow>=2.15", "scikit-learn"]
-full = ["MLensify[core]", "MLensify[ml]"]
+full = ["Microlensify[core]", "Microlensify[ml]"]
 
 
 [project.scripts]
-MLensify = "MLensify.__main__:main"      # ← changed from tess-mlens → MLensify
+Microlensify = "Microlensify.__main__:main"      
 
 [project.urls]
-Homepage = "https://github.com/Atousa-Kalantari/MLensify"
-Repository = "https://github.com/Atousa-Kalantari/MLensify"
+Homepage = "https://github.com/Atousa-Kalantari/Microlensify"
+Repository = "https://github.com/Atousa-Kalantari/Microlensify"
 
 # Packaging
 [tool.setuptools.packages.find]
 where = ["."]
 
 [tool.setuptools.package-data]
-"MLensify" = ["assets/*", "assets/*.*"]
+"Microlensify" = ["assets/*", "assets/*.*"]
 
 
 [tool.setuptools.data-files]
-"MLensify/assets" = ["MLensify/assets/*"]
+"Microlensify/assets" = ["Microlensify/assets/*"]
