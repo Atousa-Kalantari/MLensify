@@ -3,41 +3,35 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tess-mlens"
-version = "1.3.0"
-description = "TESS Microlensing Detection with Deep Learning – Atousa Kalantari"
+name = "MLensify"
+version = "1.0.0"
+description = "Microlensing Single Lens Classification – Atousa Kalantari & Somayeh Khakpash"
 authors = [{ name = "Atousa Kalantari", email = "atousakalantari99@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
-
-# No automatic dependencies
 dependencies = []
 
 [project.optional-dependencies]
 core = ["numpy>=1.21", "pandas", "astropy", "joblib", "tqdm"]
 ml = ["tensorflow>=2.15", "scikit-learn"]
-full = ["tess-mlens[core]", "tess-mlens[ml]"]
+full = ["MLensify[core]", "MLensify[ml]"]
+
 
 [project.scripts]
-tess-mlens = "tessmlens.__main__:main"
+MLensify = "MLensify.__main__:main"      # ← changed from tess-mlens → MLensify
 
 [project.urls]
-Homepage = "https://github.com/Atousa-Kalantari/TESS-MLens"
-Repository = "https://github.com/Atousa-Kalantari/TESS-MLens"
+Homepage = "https://github.com/Atousa-Kalantari/MLensify"
+Repository = "https://github.com/Atousa-Kalantari/MLensify"
 
-# ──────────────────────────────
-# THIS IS THE ONLY CORRECT WAY IN 2025
-# ──────────────────────────────
+# Packaging
 [tool.setuptools.packages.find]
 where = ["."]
 
 [tool.setuptools.package-data]
-"tessmlens" = [
-    "assets/*",
-    "assets/*.*"          # makes sure .keras and .pkl are included
-]
+"MLensify" = ["assets/*", "assets/*.*"]
 
-# Extra safety — explicitly include everything in assets folder
+
 [tool.setuptools.data-files]
-"assets" = ["tessmlens/assets/*"]
+"MLensify/assets" = ["MLensify/assets/*"]
