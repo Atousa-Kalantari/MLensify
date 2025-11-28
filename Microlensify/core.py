@@ -1,4 +1,4 @@
-#mlensify/core.py
+#Microlensify/core.py
 import os
 import csv
 import sys
@@ -19,11 +19,11 @@ warnings.filterwarnings("ignore")
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # ========================== AUTO-DOWNLOAD FROM GITHUB RELEASE ==========================
-ASSETS_DIR = Path.home() / ".mlensify_assets"
+ASSETS_DIR = Path.home() / ".microlensify_assets"
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
 RELEASE_TAG = "v1.0"  
-BASE_URL = f"https://github.com/Atousa-Kalantari/MLensify/releases/download/{RELEASE_TAG}"
+BASE_URL = f"https://github.com/Atousa-Kalantari/Microlensify/releases/download/{RELEASE_TAG}"
 
 FILES = [
     "MLensify_Model.keras",
@@ -97,7 +97,7 @@ def init_worker():
     if encoder is not None:
         return  
 
-    print("Loading MLensify model and scalers...")
+    print("Loading Microlensify model and scalers...")
     ensure_assets()  
 
     cvae = tf.keras.models.load_model(MODEL_PATH, custom_objects={'Sampling': Sampling, 'CVAE': CVAE})
