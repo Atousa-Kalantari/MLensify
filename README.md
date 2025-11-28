@@ -28,3 +28,19 @@ pip install Microlensify
 ```bash
 Microlensify <input_file> <compute_stats> <n_cores>
 ```
+
+## Arguments
+
+### `<input_file>`
+
+- **URL input:** a file containing URLs of light curves and their flux & time column names.  
+- **Local files:** a file containing paths to your files and their flux & time column names.
+
+### `<compute_stats>`
+
+- `yes` — compute flux statistics (min, max, median, std, std/(max-min)) from raw flux.  
+- `no` — flux is already normalized (like TESS QLP pipeline flux), so the model uses fixed values from the training set for these statistics.
+
+### `<n_cores>`
+
+- Number of CPU cores to use for parallel processing.
