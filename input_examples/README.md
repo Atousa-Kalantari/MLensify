@@ -6,7 +6,7 @@
 ```bash
 Microlensify urls_file.txt yes 2
 ```
-Assumes flux is already normalized.
+Flux is already normalized, so the model uses fixed statistics from the training set.
 
 Uses 2 CPU cores.
 
