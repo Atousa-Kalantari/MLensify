@@ -22,7 +22,9 @@ Microlensify splits your light curve into chunks and downsamples them to a fixed
 
 ```bash
 pip install Microlensify
-
-Usage
 ```
+
+## Usage
+```bash
 Microlensify <input_file> <compute_stats> <n_cores>
+```
