@@ -26,7 +26,7 @@ RELEASE_TAG = "v1.0"
 BASE_URL = f"https://github.com/Atousa-Kalantari/Microlensify/releases/download/{RELEASE_TAG}"
 
 FILES = [
-    "MLensify_Model.keras",
+    "Microlensify_Model.keras",
     "scaler_4fwhm.pkl",
     "scaler_std_div_diff.pkl",
     "scaler_max_flux.pkl",
@@ -35,7 +35,7 @@ FILES = [
     "scaler_std_flux.pkl",
 ]
 
-MODEL_PATH = ASSETS_DIR / "MLensify_Model.keras"
+MODEL_PATH = ASSETS_DIR / "Microlensify_Model.keras"
 
 def ensure_assets():
     """Download model and scalers with live progress bar"""
