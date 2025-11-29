@@ -71,5 +71,5 @@ If you use Microlensify in your research, please cite it appropriately.
 
 ## Contact
 
-For questions or support, please open an issue or contact **atousakalantari99@gmail.com**.
+For questions or support, please open an issue or contact atousakalantari99@gmail.com.
 
