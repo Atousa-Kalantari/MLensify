@@ -1,3 +1,0 @@
-# photometry_file   flux_column   time_column
-OGLE-2016-BLG-0094.txt Flux JD
-OGLE-2016-BLG-0206.txt Flux JD
