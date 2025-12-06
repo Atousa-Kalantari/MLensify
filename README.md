@@ -45,7 +45,7 @@ Microlensify <input_file> <compute_stats> <n_cores>
 - **URL input:** list the URLs and the flux/time column names.  
 - **Local files:** list file paths and the flux/time column names.
 
-- Example input files are provided in the `input_examples` folder.
+- Example input files are provided in the `Microlensify_Input_Examples` folder.
 
 ## Output
 
@@ -62,6 +62,10 @@ All results are saved to `prediction_results.csv` with the following columns:
 | `Chunk_Description` | Description of the chunk used |
 
 ---
+
+## Additional Project Codes:
+All additional scripts and notebooks used in this work are provided in the `Project_Codes` folder.
+
 
 ## Citation
 
