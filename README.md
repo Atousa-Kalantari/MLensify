@@ -1,8 +1,8 @@
 # Microlensify
 
-**Deep-learning microlensing classifier**
 
-Microlensify is a deep learning model that detects single lens microlensing events in light curves. It works with light curves from any telescope, either via URLs (e.g., MAST FITS files) or your own data files.
+
+Microlensify is a Physics-Informed Transformer-Based Variational Autoencode that detects single lens microlensing events in light curves. It works with light curves from any telescope, either via URLs (e.g., MAST FITS files) or your own data files.
 
 Microlensify splits your light curve into chunks and downsamples them to a fixed length for prediction. Predictions are made for each chunk individually and also for the whole light curve.
 
