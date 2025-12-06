@@ -213,7 +213,7 @@ def process_source(source, flux_col, time_col, compute_stats_flag):
         time_full = time_full[valid]
         N = len(flux)
 
-        target_sizes = list(range(1000, N + 1, 1000))
+        target_sizes = list(range(1000, N //2, 1000))
         for target_size in target_sizes:
             step = max(1, target_size // 1000)
             start = 0
