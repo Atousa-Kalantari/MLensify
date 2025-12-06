@@ -1,0 +1,6 @@
+https://mast.stsci.edu/api/v0.1/Download/file/?uri=mast:HLSP/qlp/s0033/0000/0000/0528/5361/hlsp_qlp_tess_ffi_s0033-0000000005285361_tess_v01_llc.fits	SAP_FLUX	TIME
+https://mast.stsci.edu/api/v0.1/Download/file/?uri=mast:HLSP/qlp/s0033/0000/0000/0486/5915/hlsp_qlp_tess_ffi_s0033-0000000004865915_tess_v01_llc.fits	SAP_FLUX	TIME
+https://mast.stsci.edu/api/v0.1/Download/file/?uri=mast:HLSP/qlp/s0033/0000/0000/0528/0848/hlsp_qlp_tess_ffi_s0033-0000000005280848_tess_v01_llc.fits	SAP_FLUX	TIME
+https://mast.stsci.edu/api/v0.1/Download/file/?uri=mast:HLSP/qlp/s0033/0000/0000/0504/6266/hlsp_qlp_tess_ffi_s0033-0000000005046266_tess_v01_llc.fits	SAP_FLUX	TIME
+https://mast.stsci.edu/api/v0.1/Download/file/?uri=mast:HLSP/qlp/s0033/0000/0000/0492/7511/hlsp_qlp_tess_ffi_s0033-0000000004927511_tess_v01_llc.fits	SAP_FLUX	TIME
+https://mast.stsci.edu/api/v0.1/Download/file/?uri=mast:HLSP/qlp/s0033/0000/0000/0498/7431/hlsp_qlp_tess_ffi_s0033-0000000004987431_tess_v01_llc.fits	SAP_FLUX	TIME
