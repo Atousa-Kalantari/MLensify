@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "Microlensify"
-version = "1.0.1"
+version = "1.0.3"
 description = "Microlensing Single Lens Classification – Atousa Kalantari & Somayeh Khakpash"
 authors = [{ name = "Atousa Kalantari", email = "atousakalantari99@gmail.com" }]
 readme = "README.md"
