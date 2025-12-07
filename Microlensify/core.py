@@ -56,14 +56,16 @@ def ensure_assets():
                     print(f"\rDownloading {dest_path.name} ... {downloaded//(1024*1024)}/{total_size//(1024*1024)} MB ({percent:.1f}%)", end="", flush=True)
         print(" done")
 
-    missing = any(not (ASSETS_DIR / f).exists() for f in FILES)
+    missing = False
+    for fname in FILES:
+        fpath = ASSETS_DIR / fname
+        if not fpath.exists():
+            if not missing:
+                print("First run — downloading model and scalers...")
+                missing = True
+            download_with_progress(f"{BASE_URL}/{fname}", fpath)
     if missing:
-        print("First run — downloading model and scalers...")
-        for fname in FILES:
-            fpath = ASSETS_DIR / fname
-            if not fpath.exists():
-                download_with_progress(f"{BASE_URL}/{fname}", fpath)
-        print("Download complete! Future runs are fast and offline.\n")
+        print("Download complete! Future runs are offline.\n")
 
 # ========================== CONSTANTS ==========================
 SEED = 42
@@ -80,7 +82,7 @@ FIXED_STATS = {
     "std": 89.51542107215877,
 }
 
-# ========================== LOAD MODEL GLOBALLY ==========================
+# ========================== LOAD MODEL ==========================
 print("Loading Microlensify model and scalers (10–30 sec first time)...")
 ensure_assets()
 
@@ -94,8 +96,7 @@ scaler_max = joblib.load(ASSETS_DIR / "scaler_max_flux.pkl")
 scaler_min = joblib.load(ASSETS_DIR / "scaler_min_flux.pkl")
 scaler_median = joblib.load(ASSETS_DIR / "scaler_median_flux.pkl")
 scaler_std = joblib.load(ASSETS_DIR / "scaler_std_flux.pkl")
-
-print("Model and scalers ready!\n")
+print("Model ready!\n")
 
 # ========================== HELPERS ==========================
 def adjust_to_940_points(arr):
@@ -104,16 +105,13 @@ def adjust_to_940_points(arr):
     if n == 940:
         return arr.copy()
     elif n > 940:
-        n_remove = n - 940
-        drop_idx = set(rn.sample(range(n), n_remove))
+        drop_idx = set(rn.sample(range(n), n - 940))
         return np.array([arr[i] for i in range(n) if i not in drop_idx])
     else:
-        n_pad = 940 - n
         min_val = np.min(arr)
         rng = np.random.default_rng(SEED)
-        noise = 0.001 * min_val * rng.standard_normal(n_pad)
-        padding = min_val + noise
-        return np.concatenate([arr, padding])
+        noise = 0.001 * min_val * rng.standard_normal(940 - n)
+        return np.concatenate([arr, min_val + noise])
 
 def safe_log10(x):
     return np.log10(np.clip(x, 1e-10, None))
@@ -162,7 +160,6 @@ def process_source(args):
     results = []
     tmp_file = None
     try:
-        # Download if URL
         if source.startswith("http"):
             tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.fits')
             urllib.request.urlretrieve(source, tmp_file.name)
@@ -170,14 +167,13 @@ def process_source(args):
         else:
             filepath = source
 
-        # Load data
         if filepath.lower().endswith(('.fits', '.fits.gz', '.fit')):
             data = Table.read(filepath, format='fits').to_pandas()
         else:
             try:
                 df = pd.read_csv(filepath, delim_whitespace=True, comment='#', header=None)
                 data = pd.DataFrame({'TIME': df.iloc[:, 0], 'SAP_FLUX': df.iloc[:, 1], 'QUALITY': 0})
-            except:
+            except Exception:
                 data = np.loadtxt(filepath)
                 data = pd.DataFrame({'TIME': data[:, 0], 'SAP_FLUX': data[:, 1], 'QUALITY': 0})
 
@@ -202,7 +198,7 @@ def process_source(args):
         if N < 500:
             return [[source, 0, "0.0", "0.0", "", N, "too_short"]]
 
-        # Sliding windows
+        # Sliding + end-anchored windows
         for target_size in range(1000, max(N//2 + 1, 1001), 1000):
             step = max(1, target_size // 1000)
             start = 0
@@ -213,8 +209,8 @@ def process_source(args):
                 t_ds = t_chunk[::step]
                 f_940 = adjust_to_940_points(f_ds)
                 t_940 = np.linspace(t_ds[0], t_ds[-1], 940)
-                desc = f"win{target_size}_step{step}_seg{start//target_size}"
-                results.append(predict_on_chunk(f_940, t_940, desc, source, compute_stats_flag))
+                results.append(predict_on_chunk(f_940, t_940,
+                    f"win{target_size}_step{step}_seg{start//target_size}", source, compute_stats_flag))
                 start += target_size
 
             # End-anchored
@@ -228,18 +224,15 @@ def process_source(args):
 
         # Full downsampled
         step = max(1, N // 1000)
-        f_ds = flux[::step]
-        t_ds = time_full[::step]
-        f_940 = adjust_to_940_points(f_ds)
-        t_940 = np.linspace(t_ds[0], t_ds[-1], 940)
+        f_940 = adjust_to_940_points(flux[::step])
+        t_940 = np.linspace(time_full[0], time_full[-1], 940)
         results.append(predict_on_chunk(f_940, t_940, f"full_downsampled_step{step}", source, compute_stats_flag))
 
         # Last 1000 points
         if N >= 1000:
             f_last = flux[-1000:]
-            t_last = time_full[-1000:]
             f_940 = adjust_to_940_points(f_last)
-            results.append(predict_on_chunk(f_940, t_last[[0, -1]], "last1000_fixed", source, compute_stats_flag))
+            results.append(predict_on_chunk(f_940, time_full[-1000:][[0, -1]], "last1000_fixed", source, compute_stats_flag))
 
         return results
 
@@ -274,10 +267,10 @@ def run_prediction(list_file: str, compute_stats_flag: str = "yes", num_cores: i
             tasks.append((source, flux_col, time_col, compute_stats_flag))
 
     if not tasks:
-        print("No valid light curves in list file.")
+        print("No light curves found in list file.")
         return
 
-    print(f"Loaded {len(tasks)} curves | stats={compute_stats_flag} | threads={num_cores}")
+    print(f"Loaded {len(tasks)} light curves | stats={compute_stats_flag} | threads={num_cores}")
     print("Predicting...\n")
 
     with open("prediction_results.csv", "w", newline="") as f:
@@ -285,8 +278,9 @@ def run_prediction(list_file: str, compute_stats_flag: str = "yes", num_cores: i
         writer.writerow(["Source", "Class", "Probability", "Real_4FWHM_days", "Latent_Space", "Points", "Chunk_Description"])
 
         with ThreadPoolExecutor(max_workers=num_cores) as executor:
-            for results in tqdm(executor.map(process_source, tasks), total=len(tasks), desc="Predicting", unit="source", colour="cyan"):
+            for results in tqdm(executor.map(process_source, tasks),
+                                total=len(tasks), desc="Predicting", unit="source", colour="cyan"):
                 for row in results:
                     writer.writerow(row)
 
-    print("\nDone! → prediction_results.csv")
+    print("\nAll done! → prediction_results.csv")
