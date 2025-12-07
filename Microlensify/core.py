@@ -1,7 +1,6 @@
 # Microlensify/core.py
 import os
 import csv
-import sys
 import numpy as np
 import random as rn
 import pandas as pd
@@ -20,7 +19,7 @@ from .model import Sampling, CVAE
 warnings.filterwarnings("ignore")
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# ========================== AUTO-DOWNLOAD FROM GITHUB RELEASE ==========================
+# ========================== AUTO-DOWNLOAD FROM GITHUB ==========================
 ASSETS_DIR = Path.home() / ".microlensify_assets"
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 RELEASE_TAG = "v1.0"
@@ -37,7 +36,6 @@ FILES = [
 MODEL_PATH = ASSETS_DIR / "Microlensify_Model.keras"
 
 def ensure_assets():
-    """Download model and scalers with live progress bar"""
     from urllib.request import urlopen
     def download_with_progress(url, dest_path):
         if dest_path.exists():
@@ -67,12 +65,12 @@ def ensure_assets():
         fpath = ASSETS_DIR / fname
         if not fpath.exists():
             if not missing:
-                print("First run detected — downloading model and scalers from GitHub Release...")
+                print("First run — downloading model and scalers from GitHub...")
                 missing = True
             url = f"{BASE_URL}/{fname}"
             download_with_progress(url, fpath)
     if missing:
-        print("All assets downloaded! Future runs will be instant and offline.\n")
+        print("All assets downloaded! Future runs are offline & instant.\n")
 
 # ========================== SEEDS & CONSTANTS ==========================
 SEED = 42
@@ -82,7 +80,7 @@ rn.seed(SEED)
 tf.random.set_seed(SEED)
 TESS_SECTOR_DAYS = 27.4
 
-# Fixed training statistics (used when compute_stats="no")
+# Fixed stats when compute_stats="no"
 FIXED_STATS = {
     "max": 2379.638043809108,
     "min": 1470.406889942004,
@@ -91,7 +89,7 @@ FIXED_STATS = {
 }
 
 # ========================== LOAD MODEL & SCALERS GLOBALLY ==========================
-print("Loading Microlensify model and scalers (this may take 10–30 seconds)...")
+print("Loading Microlensify model and scalers (10–30 sec)...")
 ensure_assets()
 
 cvae = tf.keras.models.load_model(MODEL_PATH, custom_objects={'Sampling': Sampling, 'CVAE': CVAE})
@@ -128,7 +126,7 @@ def adjust_to_940_points(arr):
 def safe_log10(x):
     return np.log10(np.clip(x, 1e-10, None))
 
-# ========================== CORE PREDICTION ==========================
+# ========================== PREDICTION ==========================
 def predict_on_chunk(chunk_flux, chunk_time, description, source, compute_stats_flag):
     if compute_stats_flag == "yes":
         fmax = np.max(chunk_flux)
@@ -154,10 +152,158 @@ def predict_on_chunk(chunk_flux, chunk_time, description, source, compute_stats_
     x_test = adjust_to_940_points(normflux).reshape(1, 940, 1)
 
     z_mean, _, z_sampled, class_pred = encoder.predict([x_test, scalar_test], verbose=0)
-    decoder.predict(z_sampled, verbose=0)  # Keep graph warm
+    decoder.predict(z_sampled, verbose=0)
 
     prob = float(class_pred[0][0])
     y_pred = int(prob > 0.99)
     pred_norm_fwhm = z_mean[0, -2]
     pred_fwhm_model_units = 10 ** scaler_fwhm.inverse_transform([[pred_norm_fwhm]])[0,0]
-    time
+    time_span_days = max(chunk_time[-1] - chunk_time[0], 1e-6)
+    real_4fwhm_days = pred_fwhm_model_units * (time_span_days / TESS_SECTOR_DAYS)
+
+    latent_str = '"' + ",".join([f"{v:.6f}" for v in z_mean.flatten()]) + '"'
+
+    return [source, y_pred, f"{prob:.6f}", f"{real_4fwhm_days:.3f}", latent_str, len(chunk_flux), description]
+
+# ========================== PROCESS ONE SOURCE ==========================
+def process_source(args):
+    source, flux_col, time_col, compute_stats_flag = args
+    results = []
+    tmp_file = None
+    try:
+        if source.startswith("http"):
+            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.fits')
+            urllib.request.urlretrieve(source, tmp_file.name)
+            filepath = tmp_file.name
+        else:
+            filepath = source
+
+        if filepath.lower().endswith(('.fits', '.fits.gz', '.fit')):
+            data = Table.read(filepath, format='fits').to_pandas()
+        else:
+            tryrola
+                df = pd.read_csv(filepath, delim_whitespace=True, comment='#', header=None)
+                data = pd.DataFrame({'TIME': df.iloc[:, 0], 'SAP_FLUX': df.iloc[:, 1], 'QUALITY': 0})
+            except:
+                data = np.loadtxt(filepath)
+                data = pd.DataFrame({'TIME': data[:, 0], 'SAP_FLUX': data[:, 1], 'QUALITY': 0})
+
+        data = data[data['QUALITY'] == 0]
+        flux_col = flux_col if flux_col in data.columns else 'SAP_FLUX'
+        time_col = time_col if time_col in data.columns else 'TIME'
+
+        if flux_col not in data.columns or time_col not in data.columns:
+            return [[source, 0, "0.0", "0.0", "", 0, "bad_columns"]]
+
+        flux = data[flux_col].values.astype(float)
+        time_full = data[time_col].values.astype(float)
+
+        if source.startswith("http"):
+            valid = np.isfinite(flux) & np.isfinite(time_full) & (flux > 0)
+        else:
+            valid = np.isfinite(flux) & np.isfinite(time_full)
+        flux = flux[valid]
+        time_full = time_full[valid]
+
+        N = len(flux)
+        if N < 500:
+            return [[source, 0, "0.0", "0.0", "", N, "too_short"]]
+
+        target_sizes = list(range(1000, max(N//2 + 1, 1001), 1000))
+
+        for target_size in target_sizes:
+            step = max(1, target_size // 1000)
+            start = 0
+            while start + target_size <= N:
+                t_chunk = time_full[start:start + target_size]
+                f_chunk = flux[start:start + target_size]
+                f_ds = f_chunk[::step] if step > 1 else f_chunk
+                t_ds = t_chunk[::step] if step > 1 else t_chunk
+                f_940 = adjust_to_940_points(f_ds)
+                t_940 = np.linspace(t_ds[0], t_ds[-1], 940)
+                desc = f"win{target_size}_step{step}_seg{start//target_size}"
+                results.append(predict_on_chunk(f_940, t_940, desc, source, compute_stats_flag))
+                start += target_size
+
+            # End-anchored
+            t_end = time_full[-target_size:]
+            f_end = flux[-target_size:]
+            f_ds = f_end[::step] if step > 1 else f_end
+            t_ds = t_end[::step] if step > 1 else t_end
+            f_940 = adjust_to_940_points(f_ds)
+            t_940 = np.linspace(t_ds[0], t_ds[-1], 940)
+            results.append(predict_on_chunk(f_940, t_940, f"win{target_size}_end", source, compute_stats_flag))
+
+        # Full downsampled
+        full_step = max(1, N // 1000)
+        f_ds = flux[::full_step]
+        t_ds = time_full[::full_step]
+        f_940 = adjust_to_940_points(f_ds)
+        t_940 = np.linspace(t_ds[0], t_ds[-1], 940)
+        results.append(predict_on_chunk(f_940, t_940, f"full_downsampled_step{full_step}", source, compute_stats_flag))
+
+        # Last 1000 points
+        if N >= 1000:
+            f_last = flux[-1000:]
+            t_last = time_full[-1000:]
+            f_940_last = adjust_to_940_points(f_last)
+            results.append(predict_on_chunk(f_940_last, t_last[[0, -1]], "last1000_fixed", source, compute_stats_flag))
+
+        return results
+
+    except Exception as e:
+        return [[source, 0, "0.0", "0.0", f"ERROR: {str(e)}", 0, "exception"]]
+    finally:
+        if tmp_file and os.path.exists(tmp_file.name):
+            try:
+                os.unlink(tmp_file.name)
+            except:
+                pass
+
+# ========================== MAIN BATCH FUNCTION (CLI ENTRY POINT) ==========================
+def run_prediction(list_file: str, compute_stats_flag: str = "yes", num_cores: int = 8):
+    compute_stats_flag = compute_stats_flag.lower()
+    if compute_stats_flag not in ["yes", "no"]:
+        print("compute_stats_flag must be 'yes' or 'no'")
+        return
+
+    num_cores = max(1, int(num_cores))
+
+    tasks = []
+    with open(list_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            source, flux_col, time_col = parts[0], parts[1], parts[2]
+            tasks.append((source, flux_col, time_col, compute_stats_flag))
+
+    if not tasks:
+        print("No valid light curves found.")
+        return
+
+    print(f"Loaded {len(tasks):,} light curves | stats={compute_stats_flag} | using {num_cores} threads")
+    print("Starting predictions...\n")
+
+    output_file = "prediction_results.csv"
+    with open(output_file, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Source", "Class", "Probability", "Real_4FWHM_days", "Latent_Space", "Points", "Chunk_Description"])
+
+        with ThreadPoolExecutor(max_workers=num_cores) as executor:
+            for results in tqdm(
+                executor.map(process_source, tasks, chunksize=max(1, len(tasks)//(num_cores*4) or 1)),
+                total=len(tasks),
+                desc="Predicting",
+                unit="source",
+                colour="cyan",
+                ncols=100,
+                leave=True
+            ):
+                for row in results:
+                    writer.writerow(row)
+
+    print(f"\nAll done! Results saved to → {output_file}")
