@@ -1,6 +1,8 @@
 # Microlensify/core.py
+
 import os
 import csv
+import sys
 import numpy as np
 import random as rn
 import pandas as pd
@@ -13,17 +15,18 @@ from tqdm import tqdm
 import tempfile
 import urllib.request
 import warnings
-
 from .model import Sampling, CVAE
 
 warnings.filterwarnings("ignore")
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# ========================== AUTO-DOWNLOAD ==========================
+# ========================== AUTO-DOWNLOAD FROM GITHUB RELEASE ==========================
 ASSETS_DIR = Path.home() / ".microlensify_assets"
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
-RELEASE_TAG = "v1.0"
+
+RELEASE_TAG = "v1.0"  
 BASE_URL = f"https://github.com/Atousa-Kalantari/Microlensify/releases/download/{RELEASE_TAG}"
+
 FILES = [
     "Microlensify_Model.keras",
     "scaler_4fwhm.pkl",
@@ -33,18 +36,21 @@ FILES = [
     "scaler_median_flux.pkl",
     "scaler_std_flux.pkl",
 ]
+
 MODEL_PATH = ASSETS_DIR / "Microlensify_Model.keras"
 
 def ensure_assets():
+    """Download model and scalers with live progress bar"""
     from urllib.request import urlopen
+
     def download_with_progress(url, dest_path):
         if dest_path.exists():
             return
-        print(f" • Downloading {dest_path.name} ... ", end="", flush=True)
+        print(f"   • Downloading {dest_path.name} ... ", end="", flush=True)
         with urlopen(url) as response, open(dest_path, 'wb') as out_file:
             total_size = int(response.info().get('Content-Length', 0))
             downloaded = 0
-            block_size = 1024 * 1024
+            block_size = 1024 * 1024  # 1 MB chunks
             while True:
                 data = response.read(block_size)
                 if not data:
@@ -53,7 +59,11 @@ def ensure_assets():
                 downloaded += len(data)
                 if total_size > 0:
                     percent = downloaded / total_size * 100
-                    print(f"\r • Downloading {dest_path.name} ... {downloaded//(1024*1024)}/{total_size//(1024*1024)} MB ({percent:.1f}%)", end="", flush=True)
+                    mb_done = downloaded / (1024*1024)
+                    mb_total = total_size / (1024*1024)
+                    print(f"\r   • Downloading {dest_path.name} ... {mb_done:.1f} / {mb_total:.1f} MB ({percent:.1f}%)", end="", flush=True)
+                else:
+                    print(f"\r   • Downloading {dest_path.name} ... {downloaded//(1024*1024)} MB", end="", flush=True)
         print(" done")
 
     missing = False
@@ -61,13 +71,14 @@ def ensure_assets():
         fpath = ASSETS_DIR / fname
         if not fpath.exists():
             if not missing:
-                print("First run — downloading model and scalers...")
+                print("First run detected — downloading model and scalers from GitHub Release (one-time only)...")
                 missing = True
-            download_with_progress(f"{BASE_URL}/{fname}", fpath)
+            url = f"{BASE_URL}/{fname}"
+            download_with_progress(url, fpath)
     if missing:
-        print("All assets downloaded! Future runs are offline.\n")
+        print("All files downloaded! Future runs will be instant and work offline.\n")
 
-# ========================== SEEDS & CONSTANTS ==========================
+# ========================== SEEDS & PATHS ==========================
 SEED = 42
 os.environ['PYTHONHASHSEED'] = str(SEED)
 np.random.seed(SEED)
@@ -75,32 +86,34 @@ rn.seed(SEED)
 tf.random.set_seed(SEED)
 TESS_SECTOR_DAYS = 27.4
 
-# Fixed stats when compute_stats="no" (from your old code)
-FIXED_STATS = {
-    "max": 396.817703,
-    "min": 189.911636,
-    "median": 310.554672,
-    "std": 7.381589,
-}
+# ========================== GLOBALS (LOADED ONCE) ==========================
+encoder = None
+decoder = None
+scaler_fwhm = scaler_std_div_diff = scaler_max = scaler_min = scaler_median = scaler_std = None
 
-# ========================== LOAD MODEL GLOBALLY ==========================
-print("Loading Microlensify model and scalers (10–30 sec first time)...")
-ensure_assets()
+def load_model_and_scalers():
+    """Load model and scalers globally once at startup"""
+    global encoder, decoder
+    global scaler_fwhm, scaler_std_div_diff, scaler_max, scaler_min, scaler_median, scaler_std
 
-cvae = tf.keras.models.load_model(MODEL_PATH, custom_objects={'Sampling': Sampling, 'CVAE': CVAE})
-encoder = cvae.encoder
-decoder = cvae.decoder
+    if encoder is not None:
+        return  # Already loaded
 
-scaler_fwhm = joblib.load(ASSETS_DIR / "scaler_4fwhm.pkl")
-scaler_std_div_diff = joblib.load(ASSETS_DIR / "scaler_std_div_diff.pkl")
-scaler_max = joblib.load(ASSETS_DIR / "scaler_max_flux.pkl")
-scaler_min = joblib.load(ASSETS_DIR / "scaler_min_flux.pkl")
-scaler_median = joblib.load(ASSETS_DIR / "scaler_median_flux.pkl")
-scaler_std = joblib.load(ASSETS_DIR / "scaler_std_flux.pkl")
+    print("Loading Microlensify model and scalers...")
+    ensure_assets()
 
-print("Model and scalers loaded successfully!\n")
+    cvae = tf.keras.models.load_model(MODEL_PATH, custom_objects={'Sampling': Sampling, 'CVAE': CVAE})
+    encoder, decoder = cvae.encoder, cvae.decoder
 
-# ========================== HELPERS ==========================
+    scaler_fwhm = joblib.load(ASSETS_DIR / "scaler_4fwhm.pkl")
+    scaler_std_div_diff = joblib.load(ASSETS_DIR / "scaler_std_div_diff.pkl")
+    scaler_max = joblib.load(ASSETS_DIR / "scaler_max_flux.pkl")
+    scaler_min = joblib.load(ASSETS_DIR / "scaler_min_flux.pkl")
+    scaler_median = joblib.load(ASSETS_DIR / "scaler_median_flux.pkl")
+    scaler_std = joblib.load(ASSETS_DIR / "scaler_std_flux.pkl")
+
+    print("Model and scalers loaded successfully!\n")
+
 def adjust_to_940_points(arr):
     arr = np.array(arr, dtype=float)
     n = len(arr)
@@ -121,7 +134,6 @@ def adjust_to_940_points(arr):
 def safe_log10(x):
     return np.log10(np.clip(x, 1e-10, None))
 
-# ========================== PREDICTION ==========================
 def predict_on_chunk(chunk_flux, chunk_time, description, source, compute_stats_flag):
     if compute_stats_flag == "yes":
         fmax = np.max(chunk_flux)
@@ -130,11 +142,11 @@ def predict_on_chunk(chunk_flux, chunk_time, description, source, compute_stats_
         fmed = np.median(chunk_flux)
         fstd = np.std(chunk_flux)
     else:
-        fmax = FIXED_STATS["max"]
-        fmin = FIXED_STATS["min"]
+        fmax = 396.817703
+        fmin = 189.911636
         fdiff = fmax - fmin
-        fmed = FIXED_STATS["median"]
-        fstd = FIXED_STATS["std"]
+        fmed = 310.554672
+        fstd = 7.381589
 
     norm_max = scaler_max.transform([[safe_log10(fmax)]])[0,0]
     norm_min = scaler_min.transform([[safe_log10(fmin)]])[0,0]
@@ -143,7 +155,8 @@ def predict_on_chunk(chunk_flux, chunk_time, description, source, compute_stats_
     norm_std_div_diff = scaler_std_div_diff.transform([[safe_log10(fstd / fdiff)]])[0,0]
 
     scalar_test = np.array([norm_max, norm_min, norm_std, norm_median, norm_std_div_diff]).reshape(1, 5)
-    normflux = (chunk_flux - np.min(chunk_flux)) / (np.max(chunk_flux) - np.min(chunk_flux) + 1e-12)
+
+    normflux = (chunk_flux - np.min(chunk_flux)) / (np.max(chunk_flux) - np.min(chunk_flux))
     x_test = adjust_to_940_points(normflux).reshape(1, 940, 1)
 
     z_mean, _, z_sampled, class_pred = encoder.predict([x_test, scalar_test], verbose=0)
@@ -157,9 +170,10 @@ def predict_on_chunk(chunk_flux, chunk_time, description, source, compute_stats_
     real_4fwhm_days = pred_fwhm_model_units * (time_span_days / TESS_SECTOR_DAYS)
 
     latent_str = '"' + ",".join([f"{v:.6f}" for v in z_mean.flatten()]) + '"'
+
     return [source, y_pred, f"{prob:.6f}", f"{real_4fwhm_days:.3f}", latent_str, len(chunk_flux), description]
 
-# ========================== PROCESS ONE SOURCE (EXACT OLD LOGIC) ==========================
+# ========================== process_source  =============================
 def process_source(args):
     source, flux_col, time_col, compute_stats_flag = args
     results = []
@@ -196,13 +210,12 @@ def process_source(args):
             valid = np.isfinite(flux) & np.isfinite(time_full) & (flux > 0)
         else:
             valid = np.isfinite(flux) & np.isfinite(time_full)
+
         flux = flux[valid]
         time_full = time_full[valid]
         N = len(flux)
 
-        # EXACT SAME CHUNKING AS YOUR OLD CODE → ~188 chunks
-        target_sizes = list(range(1000, N // 2, 1000))
-
+        target_sizes = list(range(1000, N //2, 1000))
         for target_size in target_sizes:
             step = max(1, target_size // 1000)
             start = 0
@@ -217,7 +230,7 @@ def process_source(args):
                 results.append(predict_on_chunk(f_940, t_940, desc, source, compute_stats_flag))
                 start += target_size
 
-            # End-anchored window
+            # end window
             t_end = time_full[-target_size:]
             f_end = flux[-target_size:]
             f_ds = f_end[::step] if step > 1 else f_end
@@ -226,7 +239,7 @@ def process_source(args):
             t_940 = np.linspace(t_ds[0], t_ds[-1], 940)
             results.append(predict_on_chunk(f_940, t_940, f"win{target_size}_end", source, compute_stats_flag))
 
-        # Full downsampled
+        # full light curve downsampled
         full_step = max(1, N // 1000)
         f_ds = flux[::full_step]
         t_ds = time_full[::full_step]
@@ -234,25 +247,31 @@ def process_source(args):
         t_940 = np.linspace(t_ds[0], t_ds[-1], 940)
         results.append(predict_on_chunk(f_940, t_940, f"full_downsampled_step{full_step}", source, compute_stats_flag))
 
+        # last 1000 points if available
+        if N >= 1000:
+            f_last1000 = flux[-1000:]
+            t_last1000 = time_full[-1000:]
+            f_940_last = adjust_to_940_points(f_last1000)
+            t_940_last = np.array([t_last1000[0], t_last1000[-1]])
+            results.append(predict_on_chunk(f_940_last, t_940_last, "last1000_fixed", source, compute_stats_flag))
+
         return results
 
     except Exception as e:
         return [[source, 0, "0.0", "0.0", f"ERROR: {str(e)}", 0, "exception"]]
     finally:
         if tmp_file and os.path.exists(tmp_file.name):
-            try:
-                os.unlink(tmp_file.name)
-            except:
-                pass
+            os.unlink(tmp_file.name)
 
-# ========================== MAIN CLI FUNCTION ==========================
-def run_prediction(list_file: str, compute_stats_flag: str = "yes", num_cores: int = 8):
+# ========================== MAIN ==========================
+def run_prediction(list_file: str, compute_stats_flag: str, num_cores: int):
     compute_stats_flag = compute_stats_flag.lower()
     if compute_stats_flag not in ["yes", "no"]:
-        print("compute_stats_flag must be 'yes' or 'no'")
-        return
+        print("Second argument must be 'yes' or 'no'")
+        sys.exit(1)
 
-    num_cores = max(1, int(num_cores))
+    # Load model once before processing
+    load_model_and_scalers()
 
     tasks = []
     with open(list_file) as f:
@@ -266,16 +285,25 @@ def run_prediction(list_file: str, compute_stats_flag: str = "yes", num_cores: i
             source, flux_col, time_col = parts[0], parts[1], parts[2]
             tasks.append((source, flux_col, time_col, compute_stats_flag))
 
-    print(f"Loaded {len(tasks)} light curves | stats={compute_stats_flag} | threads={num_cores}")
-    print("Starting predictions...\n")
+    print(f"Loaded {len(tasks):,} light curves | compute_stats = {compute_stats_flag} | using {num_cores} threads")
+    print("Starting predictions... (progress bar below)\n")
 
-    with open("prediction_results.csv", "w", newline="") as f:
+    output_file = "prediction_results.csv"
+    with open(output_file, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Source", "Class", "Probability", "Real_4FWHM_days", "Latent_Space", "Points", "Chunk_Description"])
 
+        # Use ThreadPoolExecutor with tqdm for progress tracking
         with ThreadPoolExecutor(max_workers=num_cores) as executor:
-            for results in tqdm(executor.map(process_source, tasks), total=len(tasks), desc="Predicting", unit="curve", colour="cyan"):
+            for results in tqdm(
+                executor.map(process_source, tasks, chunksize=8),
+                total=len(tasks),
+                desc="Predicting",
+                unit="source",
+                colour="cyan",
+                ncols=100
+            ):
                 for row in results:
                     writer.writerow(row)
 
-    print("\nAll done! Results saved to → prediction_results.csv")
+    print(f"\nAll done! Results saved to → {output_file}")
